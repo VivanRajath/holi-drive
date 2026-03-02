@@ -5,11 +5,9 @@ Handles participation form submissions, generates badges, and sends emails.
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-# import generate_badge from same folder; support both package and direct script use
-try:
-    from .badge_generator import generate_badge
-except ImportError:
-    from badge_generator import generate_badge
+
+# badge_generator moved to project root; import directly
+from badge_generator import generate_badge
 import base64
 import os
 import smtplib
@@ -91,9 +89,15 @@ def send_badge_email(recipient_email: str, recipient_name: str, badge_bytes: byt
         return False
 
 
-# When deployed as a Vercel serverless function the file itself maps to
-# the `/api/participate` path, so the FastAPI app should handle requests
-# relative to the function root rather than repeating `/api/participate`.
+# This file is invoked by Vercel at /api/participate; the runtime
+# automatically maps incoming requests to the root of the file.  Only
+# relative routes ("/" rather than "/api/participate") should be used.
+#
+# A simple GET handler allows the service to be checked in the browser.
+@app.get("/")
+async def root():
+    return {"status": "alive"}
+
 @app.post("/")
 async def participate(request: Request):
     """Handle participation form submission."""
