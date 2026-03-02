@@ -95,10 +95,12 @@ def send_badge_email(recipient_email: str, recipient_name: str, badge_bytes: byt
 #
 # A simple GET handler allows the service to be checked in the browser.
 @app.get("/")
+@app.get("/api/participate")
 async def root():
     return {"status": "alive"}
 
 @app.post("/")
+@app.post("/api/participate")
 async def participate(request: Request):
     """Handle participation form submission."""
     try:

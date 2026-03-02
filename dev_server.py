@@ -85,8 +85,8 @@ class DevHandler(SimpleHTTPRequestHandler):
 def main():
     port = int(os.environ.get('PORT', 8000))
     server = HTTPServer(('0.0.0.0', port), DevHandler)
-    print(f'\n  🎨 LCC Holi Color Donation Drive - Dev Server')
-    print(f'  ➡️  http://localhost:{port}\n')
+    print(f'\n  LCC Holi Color Donation Drive - Dev Server')
+    print(f'  http://localhost:{port}\n')
     try:
         server.serve_forever()
     except KeyboardInterrupt:
