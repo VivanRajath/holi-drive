@@ -18,7 +18,7 @@ load_dotenv('.env.example', override=False)
 # add api directory to path so we can import participate module; badge_generator lives at project root
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'api'))
 from badge_generator import generate_badge
-from api.participate import send_badge_email
+from api.index import send_badge_email
 
 
 class DevHandler(SimpleHTTPRequestHandler):
