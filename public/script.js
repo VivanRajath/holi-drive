@@ -190,14 +190,14 @@ Join the movement and spread the colors of kindness.
                 body: JSON.stringify(formData)
             });
 
+            // read full body as text once (avoid consuming stream twice)
+            const text = await response.text();
             let data;
             try {
-                data = await response.json();
+                data = JSON.parse(text);
             } catch (err) {
-                // not valid JSON – log body for debugging
-                const text = await response.text();
                 console.error('Non-JSON response body:', text);
-                throw err;
+                throw err; // propagate so upper catch handles it
             }
 
             if (!response.ok) {
