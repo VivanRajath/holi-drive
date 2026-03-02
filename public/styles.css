@@ -689,7 +689,8 @@ h4 {
 }
 
 .share-btn.twitter:hover {
-    background: #1DA1F2;
+    background: #000000;
+    /* X brand color */
     color: white;
 }
 
@@ -705,6 +706,11 @@ h4 {
 
 .share-btn.linkedin:hover {
     background: #0A66C2;
+    color: white;
+}
+
+.share-btn.instagram:hover {
+    background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
     color: white;
 }
 

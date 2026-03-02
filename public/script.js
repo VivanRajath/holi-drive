@@ -295,6 +295,16 @@ Join the movement and spread the colors of kindness.
         window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${url}`, '_blank');
     }
 
+    function shareOnInstagram() {
+        // Instagram doesn't have a direct share intent URL that accepts images/text from web easily.
+        // Best approach: Download the badge for them so they can upload it, then open Instagram.
+        downloadBadge();
+        showToast('Badge downloaded! Open Instagram to share it.');
+        setTimeout(() => {
+            window.open('https://instagram.com', '_blank');
+        }, 1500);
+    }
+
     // --- Participate Again ---
     function participateAgain() {
         badgeSection.classList.add('hidden');
@@ -338,6 +348,8 @@ Join the movement and spread the colors of kindness.
         createParticles();
         setupScrollAnimations();
 
+        const shareInstagram = document.getElementById('share-instagram');
+
         form.addEventListener('submit', handleSubmit);
         downloadBtn.addEventListener('click', downloadBadge);
         copyCaptionBtn.addEventListener('click', copyCaption);
@@ -345,6 +357,7 @@ Join the movement and spread the colors of kindness.
         shareFacebook.addEventListener('click', shareOnFacebook);
         shareWhatsapp.addEventListener('click', shareOnWhatsApp);
         shareLinkedin.addEventListener('click', shareOnLinkedIn);
+        if (shareInstagram) shareInstagram.addEventListener('click', shareOnInstagram);
         copyLinkBtn && copyLinkBtn.addEventListener('click', copyLink);
         participateAgainBtn.addEventListener('click', participateAgain);
 
