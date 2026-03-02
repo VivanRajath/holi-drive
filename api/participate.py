@@ -91,7 +91,10 @@ def send_badge_email(recipient_email: str, recipient_name: str, badge_bytes: byt
         return False
 
 
-@app.post("/api/participate")
+# When deployed as a Vercel serverless function the file itself maps to
+# the `/api/participate` path, so the FastAPI app should handle requests
+# relative to the function root rather than repeating `/api/participate`.
+@app.post("/")
 async def participate(request: Request):
     """Handle participation form submission."""
     try:
