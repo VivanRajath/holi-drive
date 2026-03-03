@@ -4,7 +4,7 @@ Handles participation form submissions, generates badges, and sends emails.
 """
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse, Response
 
 # badge_generator moved to project root; import directly
 from badge_generator import generate_badge
@@ -13,6 +13,8 @@ import os
 import smtplib
 import time
 import random
+import subprocess
+import tempfile
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
@@ -24,6 +26,35 @@ load_dotenv()  # loads .env if present
 load_dotenv('.env.example', override=False)
 
 app = FastAPI()
+
+# In-memory fallback store for environments with read-only filesystem (e.g., serverless)
+CERT_STORE = {}
+
+
+def _upload_blob(local_path: str, dest_path: str, access: str = 'public') -> str:
+    """Invoke the Node helper to upload a file to Vercel Blob and return its URL."""
+    script = os.path.join(os.path.dirname(__file__), '..', 'upload_blob.js')
+    # ensure script is executable
+    result = subprocess.run(['node', script, local_path, dest_path, access], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"blob upload failed: {result.stderr}")
+    return result.stdout.strip()
+
+# determine where to write badge files; by default use /tmp (Vercel ephemeral storage)
+# allow overriding via STORAGE_DIR env var
+STORAGE_DIR = os.environ.get('STORAGE_DIR', '/tmp')
+# during local dev we may prefer writing into public so static preview works
+if STORAGE_DIR == '/tmp':
+    try:
+        if os.path.isdir('public') and os.access('public', os.W_OK):
+            STORAGE_DIR = 'public'
+    except Exception:
+        pass
+
+# ensure directories exist when using local storage
+if STORAGE_DIR.startswith('/') or STORAGE_DIR == 'public':
+    os.makedirs(os.path.join(STORAGE_DIR, 'certificates'), exist_ok=True)
+    os.makedirs(os.path.join(STORAGE_DIR, 'certificate'), exist_ok=True)
 
 
 def send_badge_email(recipient_email: str, recipient_name: str, badge_bytes: bytes):
@@ -101,6 +132,67 @@ def send_badge_email(recipient_email: str, recipient_name: str, badge_bytes: byt
 async def root():
     return {"status": "alive"}
 
+
+@app.get("/api/certificate/{cert_id}")
+async def certificate_page(cert_id: str, request: Request):
+    """Serve a certificate HTML page. Use on-disk files if present, otherwise
+    serve a generated page that references the API image endpoint (in-memory)."""
+    # Try to serve static file if it exists (the earlier flow writes to public)
+    # check storage directory first
+    cert_index_path = os.path.join(STORAGE_DIR, 'certificate', cert_id, 'index.html')
+    if os.path.exists(cert_index_path):
+        with open(cert_index_path, 'r', encoding='utf-8') as f:
+            return HTMLResponse(f.read())
+
+    # Fallback: look up in-memory store
+    badge_bytes = CERT_STORE.get(cert_id)
+    origin = str(request.base_url).rstrip('/')
+    share_url = f"{origin}/api/certificate/{cert_id}"
+
+    if badge_bytes:
+        og_image = f"{origin}/api/certificate/{cert_id}/image"
+        html = f"""<!doctype html>
+<html lang=\"en\"> 
+<head>
+  <meta charset=\"utf-8\"> 
+  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"> 
+  <title>Participation Badge - Leaf Clothing Company</title>
+  <meta name=\"description\" content=\"I participated in the LCC Holi Color Donation Drive!\"> 
+  <meta property=\"og:title\" content=\"I participated in the LCC Holi Color Donation Drive!\" />
+  <meta property=\"og:description\" content=\"Join the movement — turning Holi-colored clothes into donations.\" />
+  <meta property=\"og:image\" content=\"{og_image}\" />
+  <meta property=\"twitter:card\" content=\"summary_large_image\" />
+</head>
+<body style=\"font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin:0; display:flex; align-items:center; justify-content:center; min-height:100vh; background:#fff8fb;\">
+  <div style=\"text-align:center; max-width:760px; padding:28px;\">
+    <h1 style=\"color:#e91e63; margin-bottom:6px;\">Thank you for participating!</h1>
+    <p style=\"color:#555; margin-top:0;\">Share your participation — the badge is below.</p>
+    <img src=\"/api/certificate/{cert_id}/image\" alt=\"Participation Badge\" style=\"max-width:100%; height:auto; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,0.08); margin-top:18px;\" />
+    <p style=\"color:#888; margin-top:20px; font-size:14px;\">Share this link: {share_url}</p>
+  </div>
+</body>
+</html>"""
+        return HTMLResponse(html)
+
+    return HTMLResponse('<h1>Not found</h1>', status_code=404)
+
+
+@app.get("/api/certificate/{cert_id}/image")
+async def certificate_image(cert_id: str):
+    """Return the PNG bytes for a certificate, using on-disk file if present,
+    otherwise the in-memory store."""
+    img_path = os.path.join(STORAGE_DIR, 'certificates', f"{cert_id}.png")
+    if os.path.exists(img_path):
+        with open(img_path, 'rb') as f:
+            data = f.read()
+        return Response(content=data, media_type='image/png')
+
+    badge_bytes = CERT_STORE.get(cert_id)
+    if badge_bytes:
+        return Response(content=badge_bytes, media_type='image/png')
+
+    return Response(content=b'Not found', status_code=404)
+
 @app.post("/")
 @app.post("/api/participate")
 async def participate(request: Request):
@@ -135,33 +227,26 @@ async def participate(request: Request):
 
         cert_id = make_numeric_id()
 
-        # Ensure public directories exist
-        certs_dir = os.path.join('public', 'certificates')
-        cert_page_dir = os.path.join('public', 'certificate', cert_id)
-        os.makedirs(certs_dir, exist_ok=True)
-        os.makedirs(cert_page_dir, exist_ok=True)
-
-        # Save image file
-        img_path = os.path.join(certs_dir, f"{cert_id}.png")
-        with open(img_path, 'wb') as f:
-            f.write(badge_bytes)
-
-        # Determine absolute origin for social preview images
+        # Try to save files under public/ (works in local dev). If filesystem
+        # is read-only (serverless), fall back to the in-memory CERT_STORE
         site_origin = os.environ.get('SITE_ORIGIN') or os.environ.get('VERCEL_URL')
-        if site_origin:
-            # Vercel provides VERCEL_URL without protocol; add https if missing
-            if site_origin.startswith('http://') or site_origin.startswith('https://'):
-                origin = site_origin
-            else:
-                origin = f"https://{site_origin}"
-            og_image = f"{origin}/certificates/{cert_id}.png"
-            share_url = f"{origin}/certificate/{cert_id}"
-        else:
-            og_image = f"/certificates/{cert_id}.png"
-            share_url = f"/certificate/{cert_id}"
+        # if USE_BLOB is set we'll upload to Vercel Blob instead of local storage
+        if os.environ.get('USE_BLOB'):
+            # write badge to temp file and call Node helper
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tf:
+                tf.write(badge_bytes)
+                badge_path = tf.name
+            try:
+                blob_image_url = _upload_blob(badge_path, f"certificates/{cert_id}.png", 'public')
+            finally:
+                try:
+                    os.remove(badge_path)
+                except Exception:
+                    pass
 
-        # Generate a simple static certificate HTML with OG meta tags for social sharing
-        cert_html = f"""<!doctype html>
+            # certificate page html referring to blob_image_url
+            og_image = blob_image_url
+            html = f"""<!doctype html>
 <html lang=\"en\"> 
 <head>
   <meta charset=\"utf-8\"> 
@@ -177,16 +262,90 @@ async def participate(request: Request):
   <div style=\"text-align:center; max-width:760px; padding:28px;\">
     <h1 style=\"color:#e91e63; margin-bottom:6px;\">Thank you for participating!</h1>
     <p style=\"color:#555; margin-top:0;\">Share your participation — the badge is below.</p>
-    <img src=\"/certificates/{cert_id}.png\" alt=\"Participation Badge\" style=\"max-width:100%; height:auto; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,0.08); margin-top:18px;\" />
+    <img src=\"{blob_image_url}\" alt=\"Participation Badge\" style=\"max-width:100%; height:auto; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,0.08); margin-top:18px;\" />
     <p style=\"color:#888; margin-top:20px; font-size:14px;\">Share this link: {share_url}</p>
   </div>
 </body>
 </html>"""
 
-        # Save the certificate HTML to public/certificate/<id>/index.html
-        cert_index_path = os.path.join(cert_page_dir, 'index.html')
-        with open(cert_index_path, 'w', encoding='utf-8') as f:
-            f.write(cert_html)
+            # upload certificate HTML
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.html', mode='w', encoding='utf-8') as tf:
+                tf.write(html)
+                html_path = tf.name
+            try:
+                html_url = _upload_blob(html_path, f"certificate/{cert_id}.html", 'public')
+            finally:
+                try:
+                    os.remove(html_path)
+                except Exception:
+                    pass
+
+            share_url = html_url
+        else:
+            try:
+                # write into chosen storage directory (default /tmp on Vercel)
+                certs_dir = os.path.join(STORAGE_DIR, 'certificates')
+                cert_page_dir = os.path.join(STORAGE_DIR, 'certificate', cert_id)
+                os.makedirs(certs_dir, exist_ok=True)
+                os.makedirs(cert_page_dir, exist_ok=True)
+
+                # Save image file
+                img_path = os.path.join(certs_dir, f"{cert_id}.png")
+                with open(img_path, 'wb') as f:
+                    f.write(badge_bytes)
+
+                # Determine absolute origin for social preview images
+                if site_origin:
+                    if site_origin.startswith('http://') or site_origin.startswith('https://'):
+                        origin = site_origin
+                    else:
+                        origin = f"https://{site_origin}"
+                    og_image = f"{origin}/certificate/{cert_id}"
+                    share_url = f"{origin}/api/certificate/{cert_id}"
+                else:
+                    # when STORAGE_DIR is public the static path may work
+                    og_image = f"/certificate/{cert_id}"
+                    share_url = f"/api/certificate/{cert_id}"
+
+                # Save the certificate HTML to storage
+                cert_html = f"""<!doctype html>
+<html lang=\"en\"> 
+<head>
+  <meta charset=\"utf-8\"> 
+  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"> 
+  <title>Participation Badge - Leaf Clothing Company</title>
+  <meta name=\"description\" content=\"I participated in the LCC Holi Color Donation Drive!\"> 
+  <meta property=\"og:title\" content=\"I participated in the LCC Holi Color Donation Drive!\" />
+  <meta property=\"og:description\" content=\"Join the movement — turning Holi-colored clothes into donations.\" />
+  <meta property=\"og:image\" content=\"{og_image}\" />
+  <meta property=\"twitter:card\" content=\"summary_large_image\" />
+</head>
+<body style=\"font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin:0; display:flex; align-items:center; justify-content:center; min-height:100vh; background:#fff8fb;\">
+  <div style=\"text-align:center; max-width:760px; padding:28px;\">
+    <h1 style=\"color:#e91e63; margin-bottom:6px;\">Thank you for participating!</h1>
+    <p style=\"color:#555; margin-top:0;\">Share your participation — the badge is below.</p>
+    <img src=\"/api/certificate/{cert_id}/image\" alt=\"Participation Badge\" style=\"max-width:100%; height:auto; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,0.08); margin-top:18px;\" />
+    <p style=\"color:#888; margin-top:20px; font-size:14px;\">Share this link: {share_url}</p>
+  </div>
+</body>
+</html>"""
+
+                cert_index_path = os.path.join(cert_page_dir, 'index.html')
+                with open(cert_index_path, 'w', encoding='utf-8') as f:
+                    f.write(cert_html)
+
+            except OSError as oe:
+                # Filesystem may be read-only even in STORAGE_DIR; fall back to memory store
+                CERT_STORE[cert_id] = badge_bytes
+                if site_origin:
+                    if site_origin.startswith('http://') or site_origin.startswith('https://'):
+                        origin = site_origin
+                    else:
+                        origin = f"https://{site_origin}"
+                else:
+                        origin = str(request.base_url).rstrip('/')
+
+                share_url = f"{origin}/api/certificate/{cert_id}"
 
         # Send email (non-blocking — don't fail the request if email fails)
         email_sent = send_badge_email(email, name, badge_bytes)
