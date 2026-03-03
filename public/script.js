@@ -207,6 +207,13 @@ Join the movement and spread the colors of kindness.
             currentBadgeBase64 = data.badge;
             badgeImage.src = `data:image/png;base64,${data.badge}`;
 
+            // Build share URL returned by the API (may be absolute or relative)
+            const apiShareUrl = data.share_url || `/certificate/${data.certificate_id}`;
+            const shareFullUrl = apiShareUrl.startsWith('http') ? apiShareUrl : window.location.origin + apiShareUrl;
+
+            // expose for other handlers
+            window.__LCC_shareUrl = shareFullUrl;
+
             badgeSection.classList.remove('hidden');
 
             setTimeout(() => {
@@ -260,7 +267,8 @@ Join the movement and spread the colors of kindness.
     }
 
     function copyLink() {
-        const textToCopy = `${CAPTION}\n\n${window.location.href}`;
+        const shareUrl = window.__LCC_shareUrl || window.location.href;
+        const textToCopy = `${CAPTION}\n\n${shareUrl}`;
         navigator.clipboard.writeText(textToCopy).then(() => {
             showToast('Link and caption copied!');
         }).catch(() => {
@@ -276,22 +284,26 @@ Join the movement and spread the colors of kindness.
 
     // --- Social Sharing ---
     function shareOnTwitter() {
-        const text = encodeURIComponent(CAPTION);
+        const shareUrl = window.__LCC_shareUrl || window.location.href;
+        const text = encodeURIComponent(CAPTION + '\n\n' + shareUrl);
         window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
     }
 
     function shareOnFacebook() {
-        const url = encodeURIComponent(window.location.href);
+        const shareUrl = window.__LCC_shareUrl || window.location.href;
+        const url = encodeURIComponent(shareUrl);
         window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, '_blank');
     }
 
     function shareOnWhatsApp() {
-        const text = encodeURIComponent(CAPTION + '\n\n' + window.location.href);
+        const shareUrl = window.__LCC_shareUrl || window.location.href;
+        const text = encodeURIComponent(CAPTION + '\n\n' + shareUrl);
         window.open(`https://wa.me/?text=${text}`, '_blank');
     }
 
     function shareOnLinkedIn() {
-        const url = encodeURIComponent(window.location.href);
+        const shareUrl = window.__LCC_shareUrl || window.location.href;
+        const url = encodeURIComponent(shareUrl);
         window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${url}`, '_blank');
     }
 

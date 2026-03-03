@@ -11,6 +11,8 @@ from badge_generator import generate_badge
 import base64
 import os
 import smtplib
+import time
+import random
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
@@ -122,6 +124,70 @@ async def participate(request: Request):
         badge_bytes = generate_badge(name)
         badge_base64 = base64.b64encode(badge_bytes).decode("utf-8")
 
+        # Create a numeric certificate id and save badge + static certificate page
+        def make_numeric_id():
+            for _ in range(10):
+                candidate = str(random.randint(100000, 9999999))
+                img_path = os.path.join('public', 'certificates', f"{candidate}.png")
+                if not os.path.exists(img_path):
+                    return candidate
+            return str(int(time.time()))
+
+        cert_id = make_numeric_id()
+
+        # Ensure public directories exist
+        certs_dir = os.path.join('public', 'certificates')
+        cert_page_dir = os.path.join('public', 'certificate', cert_id)
+        os.makedirs(certs_dir, exist_ok=True)
+        os.makedirs(cert_page_dir, exist_ok=True)
+
+        # Save image file
+        img_path = os.path.join(certs_dir, f"{cert_id}.png")
+        with open(img_path, 'wb') as f:
+            f.write(badge_bytes)
+
+        # Determine absolute origin for social preview images
+        site_origin = os.environ.get('SITE_ORIGIN') or os.environ.get('VERCEL_URL')
+        if site_origin:
+            # Vercel provides VERCEL_URL without protocol; add https if missing
+            if site_origin.startswith('http://') or site_origin.startswith('https://'):
+                origin = site_origin
+            else:
+                origin = f"https://{site_origin}"
+            og_image = f"{origin}/certificates/{cert_id}.png"
+            share_url = f"{origin}/certificate/{cert_id}"
+        else:
+            og_image = f"/certificates/{cert_id}.png"
+            share_url = f"/certificate/{cert_id}"
+
+        # Generate a simple static certificate HTML with OG meta tags for social sharing
+        cert_html = f"""<!doctype html>
+<html lang=\"en\"> 
+<head>
+  <meta charset=\"utf-8\"> 
+  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"> 
+  <title>Participation Badge - Leaf Clothing Company</title>
+  <meta name=\"description\" content=\"I participated in the LCC Holi Color Donation Drive!\"> 
+  <meta property=\"og:title\" content=\"I participated in the LCC Holi Color Donation Drive!\" />
+  <meta property=\"og:description\" content=\"Join the movement — turning Holi-colored clothes into donations.\" />
+  <meta property=\"og:image\" content=\"{og_image}\" />
+  <meta property=\"twitter:card\" content=\"summary_large_image\" />
+</head>
+<body style=\"font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin:0; display:flex; align-items:center; justify-content:center; min-height:100vh; background:#fff8fb;\">
+  <div style=\"text-align:center; max-width:760px; padding:28px;\">
+    <h1 style=\"color:#e91e63; margin-bottom:6px;\">Thank you for participating!</h1>
+    <p style=\"color:#555; margin-top:0;\">Share your participation — the badge is below.</p>
+    <img src=\"/certificates/{cert_id}.png\" alt=\"Participation Badge\" style=\"max-width:100%; height:auto; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,0.08); margin-top:18px;\" />
+    <p style=\"color:#888; margin-top:20px; font-size:14px;\">Share this link: {share_url}</p>
+  </div>
+</body>
+</html>"""
+
+        # Save the certificate HTML to public/certificate/<id>/index.html
+        cert_index_path = os.path.join(cert_page_dir, 'index.html')
+        with open(cert_index_path, 'w', encoding='utf-8') as f:
+            f.write(cert_html)
+
         # Send email (non-blocking — don't fail the request if email fails)
         email_sent = send_badge_email(email, name, badge_bytes)
 
@@ -129,7 +195,9 @@ async def participate(request: Request):
             "success": True,
             "badge": badge_base64,
             "email_sent": email_sent,
-            "message": f"Badge generated for {name}!"
+            "message": f"Badge generated for {name}!",
+            "certificate_id": cert_id,
+            "share_url": share_url
         })
 
     except Exception as e:

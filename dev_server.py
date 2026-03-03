@@ -53,11 +53,67 @@ class DevHandler(SimpleHTTPRequestHandler):
                 except Exception as e:
                     print('Email send error (dev_server):', e)
 
+                # Create certificate id and save files (mirrors api/index.py behavior)
+                def make_numeric_id():
+                    for _ in range(10):
+                        import random, time
+                        candidate = str(random.randint(100000, 9999999))
+                        img_path = os.path.join('public', 'certificates', f"{candidate}.png")
+                        if not os.path.exists(img_path):
+                            return candidate
+                    return str(int(time.time()))
+
+                cert_id = make_numeric_id()
+                certs_dir = os.path.join('public', 'certificates')
+                cert_page_dir = os.path.join('public', 'certificate', cert_id)
+                os.makedirs(certs_dir, exist_ok=True)
+                os.makedirs(cert_page_dir, exist_ok=True)
+
+                # save image file
+                img_path = os.path.join(certs_dir, f"{cert_id}.png")
+                with open(img_path, 'wb') as f:
+                    f.write(badge_bytes)
+
+                # build origin from Host header if available
+                host = self.headers.get('Host') or f'localhost:{os.environ.get("PORT", "8000")} '
+                origin = f'http://{host}'.strip()
+                og_image = f"{origin}/certificates/{cert_id}.png"
+                share_url = f"{origin}/certificate/{cert_id}"
+
+                # simple static page with og tags
+                cert_html = f"""<!doctype html>
+<html lang=\"en\"> 
+<head>
+  <meta charset=\"utf-8\"> 
+  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"> 
+  <title>Participation Badge - Leaf Clothing Company</title>
+  <meta name=\"description\" content=\"I participated in the LCC Holi Color Donation Drive!\"> 
+  <meta property=\"og:title\" content=\"I participated in the LCC Holi Color Donation Drive!\" />
+  <meta property=\"og:description\" content=\"Join the movement — turning Holi-colored clothes into donations.\" />
+  <meta property=\"og:image\" content=\"{og_image}\" />
+  <meta property=\"twitter:card\" content=\"summary_large_image\" />
+</head>
+<body style=\"font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin:0; display:flex; align-items:center; justify-content:center; min-height:100vh; background:#fff8fb;\">
+  <div style=\"text-align:center; max-width:760px; padding:28px;\">
+    <h1 style=\"color:#e91e63; margin-bottom:6px;\">Thank you for participating!</h1>
+    <p style=\"color:#555; margin-top:0;\">Share your participation — the badge is below.</p>
+    <img src=\"/certificates/{cert_id}.png\" alt=\"Participation Badge\" style=\"max-width:100%; height:auto; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,0.08); margin-top:18px;\" />
+    <p style=\"color:#888; margin-top:20px; font-size:14px;\">Share this link: {share_url}</p>
+  </div>
+</body>
+</html>"""
+
+                cert_index_path = os.path.join(cert_page_dir, 'index.html')
+                with open(cert_index_path, 'w', encoding='utf-8') as f:
+                    f.write(cert_html)
+
                 self._send_json(200, {
                     'success': True,
                     'badge': badge_base64,
                     'email_sent': email_sent,
-                    'message': f'Badge generated for {name}!'
+                    'message': f'Badge generated for {name}!',
+                    'certificate_id': cert_id,
+                    'share_url': share_url
                 })
 
             except Exception as e:
