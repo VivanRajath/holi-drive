@@ -65,16 +65,21 @@ def _build_certificate_html(cert_id: str, badge_image_src: str, share_url: str) 
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Participation Badge — LCC Holi Color Donation Drive</title>
-  <meta name="description" content="I participated in the LCC Holi Color Donation Drive! Join the movement.">
-  <meta property="og:title" content="I participated in the LCC Holi Color Donation Drive!" />
-  <meta property="og:description" content="Join the movement — turning Holi-colored clothes into donations. Get your badge too!" />
+  <meta name="description" content="I participated in the LCC Holi Color Donation Drive! Turning Holi-colored clothes into meaningful donations. #HoliForGood #LCCDrive #LeafClothingCompany">
+  <meta property="og:title" content="🎨 I participated in the LCC Holi Color Donation Drive!" />
+  <meta property="og:description" content="Turning discarded Holi-colored clothes into meaningful donations. Join the movement and spread the colors of kindness! 🌈 #HoliForGood #LCCDrive #LeafClothingCompany" />
   <meta property="og:image" content="{badge_image_src}" />
+  <meta property="og:image:width" content="1080" />
+  <meta property="og:image:height" content="1080" />
+  <meta property="og:image:type" content="image/png" />
   <meta property="og:url" content="{share_url}" />
   <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Leaf Clothing Company — Holi Drive" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="I participated in the LCC Holi Color Donation Drive!" />
-  <meta name="twitter:description" content="Join the movement — turning Holi-colored clothes into donations." />
+  <meta name="twitter:title" content="🎨 I participated in the LCC Holi Color Donation Drive!" />
+  <meta name="twitter:description" content="Turning Holi-colored clothes into meaningful donations. Join the movement! #HoliForGood #LCCDrive #LeafClothingCompany" />
   <meta name="twitter:image" content="{badge_image_src}" />
+  <meta name="twitter:image:alt" content="LCC Holi Color Donation Drive Participation Badge" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
