@@ -7,6 +7,7 @@ import os
 import sys
 import json
 import base64
+from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 # make sure environment variables from .env are loaded
@@ -43,7 +44,8 @@ class DevHandler(SimpleHTTPRequestHandler):
                     return
 
                 # Generate badge
-                badge_bytes = generate_badge(name)
+                today = datetime.now().strftime('%B %d, %Y')
+                badge_bytes = generate_badge(name, date=today)
                 badge_base64 = base64.b64encode(badge_bytes).decode('utf-8')
 
                 # try to send email (non-blocking for response)

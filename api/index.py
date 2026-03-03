@@ -12,6 +12,7 @@ import base64
 import os
 import smtplib
 import time
+from datetime import datetime
 import random
 import tempfile
 import re
@@ -555,7 +556,8 @@ async def participate(request: Request):
             )
 
         # Generate badge
-        badge_bytes = generate_badge(name)
+        today = datetime.now().strftime('%B %d, %Y')
+        badge_bytes = generate_badge(name, date=today)
         badge_base64 = base64.b64encode(badge_bytes).decode("utf-8")
 
         # Create a numeric certificate id and save badge + static certificate page
