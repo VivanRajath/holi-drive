@@ -16,6 +16,10 @@
       "destination": "/api/index.py"
     },
     {
+      "source": "/certificates/:id",
+      "destination": "/api/index.py"
+    },
+    {
       "source": "/(.*)",
       "destination": "/public/$1"
     }

@@ -51,6 +51,9 @@ Pipfile.lock
 Thumbs.db
 ehthumbs.db
 
+# Environment variables (keep .env.example tracked)
+.env
+
 # Build and distribution directories
 *.egg-info/
 dist/
